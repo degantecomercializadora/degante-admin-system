@@ -143,6 +143,45 @@ window.loadDashboard = async () => {
         document.getElementById('dashOrders').textContent = orderSnap.size;
         document.getElementById('dashClients').textContent = clientSnap.size;
         document.getElementById('dashCats').textContent = catSnap.size;
+
+        // Nuevas Alertas de Inventario
+        const lowStockProducts = [];
+        prodSnap.forEach(doc => {
+            const data = doc.data();
+            // Asumimos que "stock" es la propiedad, ajustamos si es un string
+            const currentStock = parseInt(data.stock) || 0;
+            if (currentStock <= 5) {
+                lowStockProducts.push({...data, id: doc.id});
+            }
+        });
+
+        const alertsContainer = document.getElementById('lowStockAlerts');
+        if (alertsContainer) {
+            if (lowStockProducts.length > 0) {
+                alertsContainer.classList.remove('hidden');
+                const lowStockCountEl = document.getElementById('lowStockCount');
+                if (lowStockCountEl) lowStockCountEl.textContent = lowStockProducts.length;
+                
+                const listHtml = lowStockProducts.slice(0, 5).map(p => `
+                    <div class="flex items-center justify-between p-3 bg-red-50 rounded-xl border border-red-100">
+                        <div class="flex items-center gap-3">
+                            <div class="w-10 h-10 bg-white rounded-lg flex items-center justify-center text-red-500 shadow-sm border border-red-100">
+                                <i class="fas fa-exclamation-triangle"></i>
+                            </div>
+                            <div class="min-w-0">
+                                <p class="text-sm font-bold text-gray-900 truncate">${p.nombre || p.name || 'Producto'}</p>
+                                <p class="text-xs text-red-600 font-medium">Solo quedan ${p.stock || 0} unidades</p>
+                            </div>
+                        </div>
+                        <button onclick="document.querySelector('[data-tab=\\'tab-productos\\']').click()" class="text-xs bg-white text-gray-700 px-3 py-1.5 rounded-lg border border-gray-200 hover:bg-gray-50 font-bold transition-colors shrink-0">Revisar</button>
+                    </div>
+                `).join('');
+                const lowStockList = document.getElementById('lowStockList');
+                if (lowStockList) lowStockList.innerHTML = listHtml;
+            } else {
+                alertsContainer.classList.add('hidden');
+            }
+        }
     } catch (err) {
         console.error(err);
     }
@@ -173,9 +212,9 @@ window.loadFacturas = async () => {
     try {
         const q = query(collection(db, 'facturas'), orderBy('createdAt', 'desc'));
         const snap = await getDocs(q);
-        
+
         if (snap.empty) {
-            tbody.innerHTML = '<tr><td colspan="6" class="px-5 py-12 text-center text-gray-400 font-bold uppercase tracking-widest text-xs">Sin facturas solicitadas</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="6" class="ºpx-5 py-12 text-center text-gray-400 font-bold uppercase tracking-widest text-xs">Sin facturas solicitadas</td></tr>';
             return;
         }
 
@@ -184,7 +223,7 @@ window.loadFacturas = async () => {
             const f = d.data();
             f.id = d.id;
             const date = f.createdAt ? new Date(f.createdAt.seconds * 1000).toLocaleString() : 'Reciente';
-            
+
             let statusBadge = f.status === 'Pendiente'
                 ? `<span class="bg-orange-50 text-orange-600 border border-orange-200 text-[10px] font-black px-2.5 py-1 rounded-full uppercase tracking-wider">Pendiente</span>`
                 : `<span class="bg-green-50 text-green-600 border border-green-200 text-[10px] font-black px-2.5 py-1 rounded-full uppercase tracking-wider">Completada</span>`;
@@ -207,16 +246,16 @@ window.loadFacturas = async () => {
                 </td>
                 <td class="px-6 py-4">${statusBadge}</td>
                 <td class="px-6 py-4">
-                    ${f.status === 'Pendiente' ? 
-                        `<button onclick="completarFactura('${f.id}')" class="bg-black hover:bg-gray-800 text-white text-[10px] font-black uppercase px-3 py-1.5 rounded-lg transition"><i class="fas fa-upload mr-1"></i> Subir Factura PDF</button>`
-                        : `<span class="text-xs text-green-600 font-bold"><i class="fas fa-check"></i> Lista</span>`
-                    }
+                    ${f.status === 'Pendiente' ?
+                    `<button onclick="completarFactura('${f.id}')" class="bg-black hover:bg-gray-800 text-white text-[10px] font-black uppercase px-3 py-1.5 rounded-lg transition"><i class="fas fa-upload mr-1"></i> Subir Factura PDF</button>`
+                    : `<span class="text-xs text-green-600 font-bold"><i class="fas fa-check"></i> Lista</span>`
+                }
                 </td>
             </tr>
             `;
         });
         tbody.innerHTML = html;
-    } catch(err) {
+    } catch (err) {
         console.error(err);
         tbody.innerHTML = '<tr><td colspan="6" class="px-5 py-12 text-center text-red-500 font-bold">Error cargando facturas</td></tr>';
     }
@@ -235,23 +274,23 @@ window.completarFactura = async (id) => {
             showToast('El archivo PDf es demasiado grande. Máximo permitido: 900 KB.', 'error');
             return;
         }
-        
+
         showToast('Guardando factura PDF segura...', 'info');
         const reader = new FileReader();
         reader.onload = async () => {
             try {
                 const base64Pdf = reader.result;
-                await updateDoc(doc(db, 'facturas', id), { 
-                    status: 'Completada', 
+                await updateDoc(doc(db, 'facturas', id), {
+                    status: 'Completada',
                     facturaUrl: base64Pdf,
-                    updatedAt: new Date().toISOString() 
+                    updatedAt: new Date().toISOString()
                 });
                 showToast('Factura subida con éxito', 'success');
                 loadFacturas();
             } catch (err) {
                 console.error(err);
-                if(err.message.includes('exceeds')) {
-                     showToast('Error: Documento excede el límite de Firestore', 'error');
+                if (err.message.includes('exceeds')) {
+                    showToast('Error: Documento excede el límite de Firestore', 'error');
                 } else showToast('Ocurrió un error al guardar', 'error');
             }
         };
@@ -265,7 +304,7 @@ window.filterFacturas = () => {
     document.querySelectorAll('.facturas-row').forEach(row => {
         const email = row.querySelector('.factura-email')?.textContent?.toLowerCase() || '';
         const rfc = row.querySelector('.factura-rfc')?.textContent?.toLowerCase() || '';
-        if(email.includes(q) || rfc.includes(q)) {
+        if (email.includes(q) || rfc.includes(q)) {
             row.style.display = '';
         } else {
             row.style.display = 'none';
@@ -318,10 +357,10 @@ window.openCloudinaryWidget = (type, extraId = null) => {
                     finalUrl = finalUrl.replace('/image/upload/', '/image/upload/fl_attachment/');
                 }
 
-                updateDoc(doc(db, 'facturas', extraId), { 
-                    status: 'Completada', 
+                updateDoc(doc(db, 'facturas', extraId), {
+                    status: 'Completada',
                     facturaUrl: finalUrl,
-                    updatedAt: new Date().toISOString() 
+                    updatedAt: new Date().toISOString()
                 }).then(() => {
                     showToast('Factura PDF subida y enviada al cliente', 'success');
                     loadFacturas();
@@ -559,10 +598,6 @@ window.openProductModal = (id = null, data = null) => {
         document.getElementById('productLargo').value = data.largo || '';
         document.getElementById('productAncho').value = data.ancho || '';
         document.getElementById('productAlto').value = data.alto || '';
-        document.getElementById('productPesoCaja').value = data.pesoCaja || '';
-        document.getElementById('productLargoCaja').value = data.largoCaja || '';
-        document.getElementById('productAnchoCaja').value = data.anchoCaja || '';
-        document.getElementById('productAltoCaja').value = data.altoCaja || '';
 
         if (data.imageUrl) {
             const prev = document.getElementById('imgPreview');
@@ -679,10 +714,6 @@ window.saveProduct = async () => {
             largo: parseFloat(document.getElementById('productLargo').value) || 0,
             ancho: parseFloat(document.getElementById('productAncho').value) || 0,
             alto: parseFloat(document.getElementById('productAlto').value) || 0,
-            pesoCaja: parseFloat(document.getElementById('productPesoCaja').value) || 0,
-            largoCaja: parseFloat(document.getElementById('productLargoCaja').value) || 0,
-            anchoCaja: parseFloat(document.getElementById('productAnchoCaja').value) || 0,
-            altoCaja: parseFloat(document.getElementById('productAltoCaja').value) || 0,
             updatedAt: new Date().toISOString()
         };
 
@@ -830,7 +861,12 @@ async function loadProducts() {
             else if (stock < 5) stockText = `<span class="font-black text-orange-500 bg-orange-50 px-2 py-0.5 rounded-md">${stock}</span>`;
 
             const img = p.imageUrl || 'https://placehold.co/48x48/f5f5f5/ddd?text=IMG';
-            
+
+            const hasVol = parseFloat(p.peso) > 0 && parseFloat(p.largo) > 0 && parseFloat(p.ancho) > 0 && parseFloat(p.alto) > 0;
+            const volWarning = !hasVol 
+                ? `<span class="bg-red-50 border border-red-200 text-red-600 text-[9px] px-1.5 py-0.5 rounded uppercase font-black tracking-widest inline-flex items-center gap-1 mt-1" title="Falta agregar peso y dimensiones de este producto para cotizaciones correctas en Skydropx"><i class="fas fa-exclamation-triangle"></i> Faltan Medidas</span>` 
+                : '';
+
             html += `
             <tr class="hover:bg-gray-50/60 transition-colors group product-row">
                 <td class="px-5 py-3.5">
@@ -838,7 +874,10 @@ async function loadProducts() {
                         <img src="${img}" class="w-10 h-10 rounded-lg object-contain bg-gray-50 border border-gray-100" onerror="this.src='https://placehold.co/48x48/f5f5f5/ddd?text=IMG'">
                         <div>
                             <p class="font-bold text-[#0a0a0a] text-sm leading-tight product-name">${p.name}</p>
-                            <p class="text-xs text-gray-300 truncate max-w-[160px] mt-0.5">${p.description || '—'}</p>
+                            <div class="flex flex-col items-start">
+                                <p class="text-xs text-gray-400 truncate max-w-[160px] mt-0.5">${p.description || '—'}</p>
+                                ${volWarning}
+                            </div>
                         </div>
                     </div>
                 </td>
@@ -877,11 +916,11 @@ async function loadProducts() {
     container.innerHTML = html;
 }
 
-window.toggleCategoryAccordion = function(catIdSafe) {
+window.toggleCategoryAccordion = function (catIdSafe) {
     const content = document.getElementById(`content-cat-${catIdSafe}`);
     const icon = document.getElementById(`icon-cat-${catIdSafe}`);
     if (!content || !icon) return;
-    
+
     if (content.classList.contains('hidden')) {
         content.classList.remove('hidden');
         icon.style.transform = 'rotate(180deg)';
@@ -897,13 +936,13 @@ window.toggleCategoryAccordion = function(catIdSafe) {
 
 document.getElementById('searchInput').addEventListener('input', e => {
     const q = e.target.value.toLowerCase();
-    
+
     // Si hay búsqueda, expandimos temporalmente todos, si no lo restauramos pero sin colapsar lo que ya estaba abierto manualmente.
     // Una búsqueda filtra filas individualmente
     document.querySelectorAll('.product-row').forEach(row => {
         const name = row.querySelector('.product-name')?.textContent?.toLowerCase() || '';
         const sku = row.querySelector('.product-sku')?.textContent?.toLowerCase() || '';
-        
+
         if (!q || name.includes(q) || sku.includes(q)) {
             row.style.display = '';
         } else {
@@ -917,7 +956,7 @@ document.getElementById('searchInput').addEventListener('input', e => {
             const visibleRows = pile.querySelectorAll('.product-row:not([style*="display: none"])').length;
             const content = pile.querySelector('[id^="content-cat-"]');
             const icon = pile.querySelector('[id^="icon-cat-"]');
-            
+
             if (visibleRows > 0) {
                 pile.style.display = '';
                 if (content && content.classList.contains('hidden')) {
@@ -941,19 +980,19 @@ document.getElementById('searchInput').addEventListener('input', e => {
 // ════════════════════════════════════════════════════════════════════════════
 //  CARRUSEL HERO
 // ════════════════════════════════════════════════════════════════════════════
-    window.openSlideModal = () => {
+window.openSlideModal = () => {
     document.getElementById('slideId').value = '';
     document.getElementById('slideModalTitle').textContent = 'Nuevo Slide Hero';
     ['slideTitle', 'slideSubtitle', 'slideCtaText', 'slideCtaUrl'].forEach(id => {
         const el = document.getElementById(id);
         if (el) el.value = '';
     });
-    
+
     const typeEl = document.getElementById('slideCtaType');
     if (typeEl) typeEl.value = '#catalogo';
     if (window.toggleSlideCtaUrl) window.toggleSlideCtaUrl();
     document.getElementById('slideOrder').value = '1';
-    
+
     // Reset Desktop Image
     document.getElementById('slideImageUrl').value = '';
     const prev = document.getElementById('slideImgPreview');
@@ -1032,13 +1071,13 @@ window.editSlide = async (id) => {
         const d = await getDoc(doc(db, 'heroCarousel', id));
         if (!d.exists()) return;
         const s = d.data();
-        
+
         document.getElementById('slideId').value = id;
         document.getElementById('slideModalTitle').textContent = 'Editar Slide Hero';
         document.getElementById('slideTitle').value = s.title || '';
         document.getElementById('slideSubtitle').value = s.subtitle || '';
         document.getElementById('slideCtaText').value = s.ctaText || '';
-        
+
         const typeEl = document.getElementById('slideCtaType');
         const urlEl = document.getElementById('slideCtaUrl');
         if (['#catalogo', '#descargar-pdf', '#facturacion', '#perfil', '#pedidos'].includes(s.ctaUrl)) {
@@ -1050,7 +1089,7 @@ window.editSlide = async (id) => {
         }
         if (window.toggleSlideCtaUrl) window.toggleSlideCtaUrl();
         document.getElementById('slideOrder').value = s.order || 1;
-        
+
         // Desktop Image
         document.getElementById('slideImageUrl').value = s.imageUrl || '';
         const prev = document.getElementById('slideImgPreview');
@@ -1263,8 +1302,8 @@ window.loadBodySection = async () => {
 
 window.saveBodySection = async () => {
     const btn = document.getElementById('saveBodySectionBtn');
-    if(btn) { btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Guardando...'; btn.disabled = true; }
-        
+    if (btn) { btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Guardando...'; btn.disabled = true; }
+
     try {
         await setDoc(doc(db, 'config', 'bodySection'), {
             imageUrls: bodySectionUrls,
@@ -1276,7 +1315,7 @@ window.saveBodySection = async () => {
         console.error('Error saving body section:', err);
         showToast('Error guardando imágenes', 'error');
     } finally {
-        if(btn) { btn.innerHTML = '<i class="fas fa-save"></i> Guardar Imágenes'; btn.disabled = false; }
+        if (btn) { btn.innerHTML = '<i class="fas fa-save"></i> Guardar Imágenes'; btn.disabled = false; }
     }
 };
 
@@ -1327,14 +1366,14 @@ function renderClients(clients) {
         }
 
         const providerIcon = `<span class="inline-flex items-center gap-1 text-[11px] font-semibold ${providerColor}">${providerIconTag} ${providerDisplay}</span>`;
-        
+
         const lastLogin = c.lastLogin?.toDate
             ? c.lastLogin.toDate().toLocaleString('es-MX', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })
             : '—';
         const avatar = c.photoURL
             ? `<img src="${c.photoURL}" class="w-8 h-8 rounded-full object-cover border border-gray-200" alt="">`
             : `<div class="w-8 h-8 rounded-full bg-[#0d1b2a] text-white flex items-center justify-center text-[11px] font-black uppercase">${(c.displayName || c.email || c.phone || '?')[0]}</div>`;
-        
+
         const isEspecial = c.precioEspecial === true;
 
         let contactInfo = c.email || '—';
@@ -1555,9 +1594,9 @@ window.loadCategorias = async () => {
                     <i class="fas fa-trash"></i>
                 </button>` : ''}
                 <div class="w-20 h-20 rounded-full overflow-hidden bg-gray-100 flex items-center justify-center border-2 ${hasImage ? 'border-blue-300' : 'border-gray-200 border-dashed'}">
-                    ${imgSrc 
-                        ? `<img src="${imgSrc}" class="w-full h-full object-contain">` 
-                        : `<i class="fas fa-image text-xl text-gray-300"></i>`}
+                    ${imgSrc
+                    ? `<img src="${imgSrc}" class="w-full h-full object-contain">`
+                    : `<i class="fas fa-image text-xl text-gray-300"></i>`}
                 </div>
                 <p class="text-xs font-black text-gray-800 text-center uppercase">${name}</p>
                 <p class="text-[9px] ${hasImage ? 'text-green-500' : 'text-gray-400'} font-bold">${hasImage ? '✓ Con imagen' : 'Sin imagen'}</p>
@@ -1978,7 +2017,7 @@ window.switchTab = function (tabId) {
             try {
                 if (frame.contentDocument && frame.contentDocument.readyState === 'complete') doSend();
                 else frame.addEventListener('load', doSend, { once: true });
-            } catch(e) { doSend(); }
+            } catch (e) { doSend(); }
         }
         loadVisualSettings();
     }
@@ -1988,77 +2027,233 @@ window.switchTab = function (tabId) {
 //  PEDIDOS
 // ════════════════════════════════════════════════════════════════════════════
 window.loadOrders = async () => {
-    const tbody = document.getElementById('ordersTableBody');
-    tbody.innerHTML = '<tr><td colspan="6" class="px-8 py-12 text-center text-gray-300 font-bold uppercase tracking-widest text-xs"><i class="fas fa-spinner fa-spin mr-2"></i>Cargando pedidos...</td></tr>';
+    const container = document.getElementById('ordersContainer');
+    if(!container) return; // Si no está el nuevo contenedor, abortar.
+    
+    container.innerHTML = `
+        <div class="bg-white rounded-2xl border border-gray-100 p-12 text-center shadow-sm">
+            <i class="fas fa-spinner fa-spin text-3xl text-blue-400 mb-4"></i>
+            <p class="text-xs font-bold text-gray-400 uppercase tracking-widest">Cargando y organizando pedidos...</p>
+        </div>`;
 
     try {
         const snap = await getDocs(query(collection(db, 'pedidos'), orderBy('createdAt', 'desc')));
         if (snap.empty) {
-            tbody.innerHTML = '<tr><td colspan="6" class="px-8 py-12 text-center text-gray-300 font-bold uppercase tracking-widest text-xs">No hay pedidos registrados</td></tr>';
+            container.innerHTML = `
+                <div class="bg-white rounded-2xl border border-gray-100 p-12 text-center shadow-sm">
+                    <i class="fas fa-box-open text-4xl text-gray-200 mb-4"></i>
+                    <p class="text-sm font-black text-gray-900 uppercase tracking-widest">No hay pedidos registrados</p>
+                </div>`;
             return;
         }
 
-        tbody.innerHTML = snap.docs.map(d => {
+        // Agrupar por cliente
+        const clientsMap = new Map();
+        
+        snap.docs.forEach(d => {
             const o = d.data();
-            const itemsHtml = o.items.map(it => `<div class="text-[11px] font-bold text-gray-700 leading-tight">▪ ${it.name} <span class="text-gray-400">×${it.quantity}</span></div>`).join('');
-            const date = new Date(o.createdAt).toLocaleString('es-MX', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
-
-            let statusClass = 'bg-gray-100 text-gray-500';
-            if (o.status === 'Pendiente') statusClass = 'bg-amber-100 text-amber-600';
-            if (o.status === 'Pagado') statusClass = 'bg-green-100 text-green-600';
-            if (o.status === 'Enviado') statusClass = 'bg-blue-100 text-blue-600';
-            if (o.status === 'Completado') statusClass = 'bg-emerald-100 text-emerald-600';
-
-            const hasGuia = o.labelUrl && o.trackingNumber;
-            const shipments = o.shipments || [];
-
-            let guiaCol = '';
-            if (o.pickupScheduled) {
-                guiaCol = `<div class="flex flex-col gap-1"><span class="text-[9px] font-black text-green-600"><i class="fas fa-check-circle"></i> Recolección ${o.pickupDate} ${o.pickupTime}</span><a href="${o.labelUrl}" target="_blank" class="text-[10px] font-black text-blue-600 hover:underline">📦 Guía PDF</a></div>`;
-            } else if (o.shipmentId && o.labelUrl) {
-                guiaCol = `<div class="flex flex-col gap-1.5"><a href="${o.labelUrl}" target="_blank" class="text-[10px] font-black text-blue-600 hover:underline">📦 Guía PDF</a><span class="text-[9px] text-gray-400">${o.trackingNumber || ''}</span><button onclick="schedulePickup('${d.id}')" class="text-[10px] font-black text-white bg-[#f26522] hover:bg-[#d15316] px-2 py-1 rounded-lg"><i class="fas fa-calendar-check mr-1"></i>Recolección</button></div>`;
-            } else {
-                guiaCol = '<button onclick="createShipment(\'' + d.id + '\')" class="text-[10px] font-black text-white bg-[#f26522] hover:bg-[#d15316] px-3 py-1.5 rounded-lg transition-colors"><i class="fas fa-truck-fast mr-1"></i>Crear Envío</button>';
+            o.id = d.id;
+            const email = o.customerInfo?.email || o.userId || 'Sin Email Registrado';
+            const name = o.customerInfo?.name || o.userName || 'Usuario Desconocido';
+            
+            if (!clientsMap.has(email)) {
+                clientsMap.set(email, { name, email, totalSpent: 0, orders: [] });
             }
+            
+            const client = clientsMap.get(email);
+            client.totalSpent += ((o.total || 0) + (o.shippingPrice || 0));
+            client.orders.push(o);
+        });
 
-            let actionsHtml = '';
-            if (o.labelUrl || o.trackingNumber) {
-                actionsHtml = guiaCol;
-            } else {
-                actionsHtml = `
-                    <div class="flex flex-col gap-1.5">
-                        ${guiaCol}
-                        <select onchange="updateOrderStatus('${d.id}', this.value)" class="text-[10px] font-black uppercase tracking-widest border border-gray-200 rounded-lg px-2 py-1 focus:outline-none focus:border-blue-400">
-                            <option value="Pendiente" ${o.status === 'Pendiente' ? 'selected' : ''}>Pendiente</option>
-                            <option value="Pagado" ${o.status === 'Pagado' ? 'selected' : ''}>Pagado</option>
-                            <option value="Enviado" ${o.status === 'Enviado' ? 'selected' : ''}>Enviado</option>
-                            <option value="Completado" ${o.status === 'Completado' ? 'selected' : ''}>Completado</option>
-                            <option value="Cancelado" ${o.status === 'Cancelado' ? 'selected' : ''}>Cancelado</option>
-                        </select>
-                    </div>`;
-            }
+        // Generar HTML
+        let finalHtml = '';
+        let index = 0;
+        
+        clientsMap.forEach((client, email) => {
+            const initial = client.name.charAt(0).toUpperCase();
+            
+            let ordersHtml = client.orders.map(o => {
+                const itemsHtml = (o.items || []).map(it => `<div class="text-[11px] font-bold text-gray-700 leading-tight">▪ ${it.name} <span class="text-blue-500">×${it.quantity}</span></div>`).join('');
+                const date = new Date(o.createdAt).toLocaleString('es-MX', { day: '2-digit', month: 'short', year:'numeric', hour: '2-digit', minute: '2-digit' });
 
-            return `
-            <tr class="border-b border-gray-50 hover:bg-gray-50/50 transition">
-                <td class="px-8 py-4">
-                    <p class="text-xs font-black text-gray-900 leading-none mb-1">ID: ${d.id.slice(-6).toUpperCase()}</p>
-                    <p class="text-[10px] text-gray-400 font-bold uppercase tracking-tighter">${date}</p>
-                </td>
-                <td class="px-8 py-4">
-                    <p class="text-xs font-black text-[#0d1b2a]">${o.userName || 'Usuario'}</p>
-                    ${o.requiereFactura ? '<span class="text-[9px] font-black text-blue-500 uppercase tracking-widest bg-blue-50 px-1.5 py-0.5 rounded-full border border-blue-100">Factura</span>' : ''}
-                </td>
-                <td class="px-8 py-4 space-y-1">${itemsHtml}</td>
-                <td class="px-8 py-4 text-sm font-black text-gray-900">$${o.total.toFixed(2)}</td>
-                <td class="px-8 py-4">
-                    <span class="px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest shadow-sm ${statusClass}">${o.status}</span>
-                </td>
-                <td class="px-8 py-4">${actionsHtml}</td>
-            </tr>`;
-        }).join('');
+                let statusClass = 'bg-gray-100 text-gray-500';
+                if (o.status === 'Pendiente de Pago') statusClass = 'bg-red-100 text-red-600';
+                if (o.status === 'Pendiente') statusClass = 'bg-amber-100 text-amber-600';
+                if (o.status === 'Pagado') statusClass = 'bg-green-100 text-green-600';
+                if (o.status === 'Enviado') statusClass = 'bg-blue-100 text-blue-600';
+                if (o.status === 'Completado') statusClass = 'bg-emerald-100 text-emerald-600';
+
+                let guiaCol = '';
+                if (o.pickupScheduled) {
+                    guiaCol = `<div class="flex flex-col gap-1"><span class="text-[9px] font-black text-green-600"><i class="fas fa-check-circle"></i> Recolección ${o.pickupDate} ${o.pickupTime}</span><a href="${o.labelUrl}" target="_blank" class="text-[10px] font-black text-blue-600 hover:underline">📦 Guía PDF</a></div>`;
+                } else if (o.shipmentId && o.labelUrl) {
+                    guiaCol = `<div class="flex flex-col gap-1.5"><a href="${o.labelUrl}" target="_blank" class="text-[10px] font-black text-blue-600 hover:underline">📦 Guía PDF</a><span class="text-[9px] text-gray-400">${o.trackingNumber || ''}</span><button onclick="schedulePickup('${o.id}')" class="text-[10px] font-black text-white bg-[#f26522] hover:bg-[#d15316] px-2 py-1 rounded-lg"><i class="fas fa-calendar-check mr-1"></i>Recolección</button></div>`;
+                } else if (o.address && o.hasShipping && o.status === 'Pagado') {
+                    guiaCol = `<button onclick="createShipment('${o.id}')" class="text-[10px] font-black text-white bg-[#f26522] hover:bg-[#d15316] px-3 py-1.5 rounded-lg transition-colors"><i class="fas fa-truck-fast mr-1"></i>Crear Envío</button>`;
+                } else if (o.address) {
+                    guiaCol = '<span class="text-[10px] text-gray-400">Sin envío</span>';
+                } else {
+                    guiaCol = '<span class="text-[10px] text-gray-400">Pedido sin envío</span>';
+                }
+
+                let actionsHtml = '';
+                if (o.labelUrl || o.trackingNumber) {
+                    actionsHtml = guiaCol;
+                } else {
+                    actionsHtml = `
+                        <div class="flex flex-col gap-1.5 w-full">
+                            ${guiaCol}
+                            <select onchange="updateOrderStatus('${o.id}', this.value)" class="text-[10px] font-black uppercase tracking-widest border border-gray-200 rounded-lg px-2 py-1 focus:outline-none focus:border-blue-400">
+                                <option value="Pendiente" ${o.status === 'Pendiente' ? 'selected' : ''}>Pendiente</option>
+                                <option value="Pagado" ${o.status === 'Pagado' ? 'selected' : ''}>Pagado</option>
+                                <option value="Enviado" ${o.status === 'Enviado' ? 'selected' : ''}>Enviado</option>
+                                <option value="Completado" ${o.status === 'Completado' ? 'selected' : ''}>Completado</option>
+                                <option value="Cancelado" ${o.status === 'Cancelado' ? 'selected' : ''}>Cancelado</option>
+                            </select>
+                        </div>`;
+                }
+
+                // Formatear dirección detallada
+                let addressHtml = '<span class="text-gray-400">No especificada</span>';
+                if (o.address) {
+                    const cpVal = o.address.zipCode || o.address.zip || '';
+                    addressHtml = `
+                        <div class="space-y-0.5 mt-1">
+                            ${o.address.name ? `<div class="text-[11px] text-gray-650"><strong>Destinatario:</strong> ${o.address.name}</div>` : ''}
+                            <div class="text-[11px] text-gray-650"><strong>Calle/No:</strong> ${o.address.street || ''}</div>
+                            ${o.address.colonia ? `<div class="text-[11px] text-gray-650"><strong>Colonia:</strong> ${o.address.colonia}</div>` : ''}
+                            <div class="text-[11px] text-gray-650"><strong>Ciudad/Edo:</strong> ${o.address.city || ''}, ${o.address.state || ''}</div>
+                            <div class="text-[11px] text-gray-650"><strong>CP:</strong> ${cpVal}</div>
+                        </div>
+                    `;
+                }
+                const phoneStr = o.customerInfo?.phone || o.phone || '';
+
+                // Formatear método de entrega / paquetería
+                let shippingMethodStr = '';
+                if (o.shippingMethod) {
+                    if (typeof o.shippingMethod === 'object') {
+                        shippingMethodStr = `${o.shippingMethod.carrier || ''} (${o.shippingMethod.service || ''})`.toUpperCase();
+                    } else if (o.shippingMethod === 'local') {
+                        shippingMethodStr = 'RECOGER EN TIENDA';
+                    } else if (o.shippingMethod === 'acordar') {
+                        shippingMethodStr = 'ACORDAR ENVÍO POR WHATSAPP';
+                    } else {
+                        shippingMethodStr = String(o.shippingMethod).toUpperCase();
+                    }
+                } else if (o.address) {
+                    shippingMethodStr = 'A DOMICILIO';
+                } else {
+                    shippingMethodStr = 'RECOGER EN TIENDA / SIN ENVÍO';
+                }
+
+                // Desglose de precios
+                const subtotalVal = o.total || 0;
+                const shippingVal = o.shippingPrice || 0;
+                const totalVal = subtotalVal + shippingVal;
+
+                return `
+                <div class="bg-white rounded-xl border border-gray-200 p-5 shadow-sm relative overflow-hidden">
+                    ${o.requiereFactura ? '<div class="absolute top-0 right-0 bg-blue-500 text-white text-[8px] font-black uppercase tracking-widest px-2 py-1 rounded-bl-lg shadow">FACTURA REQUERIDA</div>' : ''}
+                    <div class="flex justify-between items-start mb-4 border-b border-gray-100 pb-4">
+                        <div>
+                            <p class="text-[10px] font-black text-blue-600 uppercase tracking-widest mb-1">Orden #${o.id.slice(-6).toUpperCase()}</p>
+                            <p class="text-xs text-gray-400 font-bold uppercase tracking-tight">${date}</p>
+                        </div>
+                        <span class="px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest shadow-sm ${statusClass}">${o.status}</span>
+                    </div>
+                    
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div>
+                            <p class="text-[9px] font-black text-gray-400 uppercase tracking-widest mb-2 border-b border-gray-50 pb-1">Artículos</p>
+                            <div class="space-y-1.5">${itemsHtml}</div>
+                            
+                            <div class="mt-3 border-t border-gray-100 pt-2 space-y-1">
+                                <div class="flex justify-between text-[11px] text-gray-500 font-medium">
+                                    <span>Subtotal:</span>
+                                    <span>$${subtotalVal.toFixed(2)}</span>
+                                </div>
+                                <div class="flex justify-between text-[11px] text-gray-500 font-medium">
+                                    <span>Envío:</span>
+                                    <span>${shippingVal > 0 ? `$${shippingVal.toFixed(2)}` : 'Gratis / Por cotizar'}</span>
+                                </div>
+                                <div class="flex justify-between text-xs font-black text-gray-900 border-t border-dashed border-gray-100 pt-1">
+                                    <span>Total:</span>
+                                    <span>$${totalVal.toFixed(2)}</span>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div>
+                            <p class="text-[9px] font-black text-gray-400 uppercase tracking-widest mb-2 border-b border-gray-50 pb-1">Envío y Contacto</p>
+                            <div class="text-[11px] font-bold text-gray-700 leading-tight mb-1 flex items-start">
+                                <i class="fas fa-map-marker-alt text-gray-400 mr-1.5 w-3 mt-0.5 flex-shrink-0"></i>
+                                <div>
+                                    <span>Dirección:</span>
+                                    ${addressHtml}
+                                </div>
+                            </div>
+                            ${phoneStr ? `<p class="text-[11px] font-bold text-gray-700"><i class="fas fa-phone text-gray-400 mr-1.5 w-3"></i>${phoneStr}</p>` : ''}
+                            <p class="text-[11px] font-bold text-gray-700 mt-2 flex items-center"><i class="fas fa-truck text-gray-400 mr-1.5 w-3"></i><span>Entrega:</span><span class="text-blue-600 font-black ml-1">${shippingMethodStr}</span></p>
+                            
+                            <div class="mt-4 pt-4 border-t border-gray-50 flex flex-wrap gap-2 items-center">
+                                ${actionsHtml}
+                            </div>
+                        </div>
+                    </div>
+                </div>`;
+            }).join('');
+
+            finalHtml += `
+            <div class="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden transition-all hover:shadow-md">
+                <div class="px-6 py-5 flex items-center justify-between cursor-pointer bg-white hover:bg-gray-50 transition-colors" onclick="toggleClientOrders('client-${index}', 'icon-client-${index}')">
+                    <div class="flex items-center gap-4">
+                        <div class="w-12 h-12 rounded-xl bg-gradient-to-br from-[#0f172a] to-[#020617] text-white flex items-center justify-center font-black text-lg shadow-sm">
+                            ${initial}
+                        </div>
+                        <div>
+                            <p class="text-sm font-black text-gray-900 uppercase tracking-tight">${client.name}</p>
+                            ${(client.email && client.email.includes('@')) 
+                                ? `<p class="text-[10px] font-bold text-gray-400 uppercase tracking-widest mt-0.5"><i class="fas fa-envelope mr-1 text-gray-300"></i>${client.email}</p>` 
+                                : ''}
+                        </div>
+                    </div>
+                    <div class="flex items-center gap-6">
+                        <div class="text-right hidden sm:block">
+                            <p class="text-xs font-black text-gray-900">${client.orders.length} Pedido${client.orders.length !== 1 ? 's' : ''}</p>
+                            <p class="text-[10px] font-bold text-gray-400 uppercase tracking-widest mt-0.5">Gastado: $${client.totalSpent.toFixed(2)}</p>
+                        </div>
+                        <div class="w-8 h-8 rounded-full bg-gray-50 flex items-center justify-center border border-gray-100">
+                            <i class="fas fa-chevron-down text-gray-400 transition-transform duration-300" id="icon-client-${index}"></i>
+                        </div>
+                    </div>
+                </div>
+                
+                <div id="client-${index}" class="hidden border-t border-gray-100 bg-[#f8f9fa] p-4 sm:p-6 space-y-4">
+                    ${ordersHtml}
+                </div>
+            </div>`;
+            
+            index++;
+        });
+
+        container.innerHTML = finalHtml;
+
     } catch (err) {
         console.error(err);
-        tbody.innerHTML = '<tr><td colspan="6" class="px-8 py-12 text-center text-red-500 font-bold uppercase tracking-widest text-xs">Error al cargar pedidos</td></tr>';
+        container.innerHTML = `<div class="p-8 text-center text-red-500 font-bold"><i class="fas fa-exclamation-triangle text-3xl mb-3"></i><br>Error cargando pedidos</div>`;
+    }
+};
+
+window.toggleClientOrders = (containerId, iconId) => {
+    const el = document.getElementById(containerId);
+    const icon = document.getElementById(iconId);
+    if (el.classList.contains('hidden')) {
+        el.classList.remove('hidden');
+        if(icon) icon.classList.add('rotate-180');
+    } else {
+        el.classList.add('hidden');
+        if(icon) icon.classList.remove('rotate-180');
     }
 };
 
@@ -2076,18 +2271,20 @@ window.updateOrderStatus = async (id, newStatus) => {
 window.createShipment = async (orderId) => {
     try {
         showToast('⏳ Creando envío en SkyDropx...', 'info');
-        
+
         const workerUrl = 'https://hidden-mountain-9faa.degantecomercializadora.workers.dev/shipments';
         const snap = await getDoc(doc(db, 'pedidos', orderId));
         if (!snap.exists()) { showToast('Pedido no encontrado', 'error'); return; }
-        
+
         const order = snap.data();
-        
+
         const response = await fetch(workerUrl, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 orderId: orderId,
+                rateId: order.shippingMethod?.id || '',
+                shippingMethod: order.shippingMethod || { carrier: 'Desconocido', service: 'Estándar', price: 0 },
                 total: order.total,
                 address: order.address || { zip: '06000', street: '', city: '', state: '' },
                 items: order.items || [],
@@ -2095,7 +2292,7 @@ window.createShipment = async (orderId) => {
         });
 
         const result = await response.json();
-        
+
         if (!response.ok) {
             showToast('Error: ' + (result.error || 'No se pudo crear el envío'), 'error');
             return;
@@ -2104,6 +2301,7 @@ window.createShipment = async (orderId) => {
         await updateDoc(doc(db, 'pedidos', orderId), {
             labelUrl: result.labelUrl,
             trackingNumber: result.trackingNumber,
+            trackingUrl: result.trackingUrl || `https://skydropx.com/rastreo/${result.trackingNumber}`,
             carrier: result.carrier,
             shipmentId: result.shipmentId,
             status: 'Enviado',
@@ -2324,10 +2522,10 @@ window.wixHexChange = (key, val) => {
     _wixState.colors[key] = val;
     const preview = document.getElementById('swp-' + key);
     if (preview) preview.style.background = val;
-    
+
     // El input tipo color requiere minúsculas para funcionar
     const safeHex = val.toLowerCase();
-    
+
     // Sync the color picker input
     document.querySelectorAll('input[type=color]').forEach(inp => {
         if (inp.getAttribute('oninput') && inp.getAttribute('oninput').includes(`'${key}'`)) {
@@ -2725,7 +2923,7 @@ window.saveUbicacion = async () => {
         showToast('Ubicación guardada ✓', 'success');
         closeModal('ubicacionModal');
         window.loadUbicaciones();
-    } catch(e) { console.error(e); showToast('Error guardando ubicación: ' + e.message, 'error'); }
+    } catch (e) { console.error(e); showToast('Error guardando ubicación: ' + e.message, 'error'); }
 };
 
 
@@ -2735,7 +2933,7 @@ window.deleteUbicacion = async (id) => {
         await deleteDoc(doc(db, 'ubicaciones', id));
         showToast('Ubicación eliminada', 'success');
         window.loadUbicaciones();
-    } catch(e) { showToast('Error: ' + e.message, 'error'); }
+    } catch (e) { showToast('Error: ' + e.message, 'error'); }
 };
 
 window.autoFixMapUrl = async (id, encodedUrl) => {
@@ -2745,7 +2943,7 @@ window.autoFixMapUrl = async (id, encodedUrl) => {
         await updateDoc(doc(db, 'ubicaciones', id), { mapUrl: fixedUrl, updatedAt: new Date().toISOString() });
         showToast('✓ URL corregida y guardada', 'success');
         window.loadUbicaciones();
-    } catch(e) { showToast('Error al corregir: ' + e.message, 'error'); }
+    } catch (e) { showToast('Error al corregir: ' + e.message, 'error'); }
 };
 
 window.loadUbicaciones = async () => {
@@ -2766,7 +2964,7 @@ window.loadUbicaciones = async () => {
             const isEmbedUrl = loc.mapUrl && loc.mapUrl.includes('maps/embed');
             const tryFixUrl = loc.mapUrl ? convertToEmbedUrl(loc.mapUrl) : '';
             const canAutoFix = tryFixUrl && tryFixUrl !== 'NEEDS_PLACE_ID' && tryFixUrl !== loc.mapUrl && tryFixUrl.includes('maps/embed');
-            
+
             let mapSection = '';
             if (!loc.mapUrl) {
                 mapSection = '<div class="h-[140px] bg-gradient-to-br from-gray-50 to-gray-100 flex flex-col items-center justify-center text-gray-300 gap-1"><i class="fas fa-map text-2xl"></i><span class="text-[9px] font-bold uppercase tracking-wider">Sin mapa</span></div>';
@@ -2779,7 +2977,7 @@ window.loadUbicaciones = async () => {
                     ${canAutoFix ? `<button onclick="autoFixMapUrl('${loc.id}','${encodeURIComponent(tryFixUrl)}')" class="text-[9px] font-black bg-amber-500 hover:bg-amber-600 text-white px-2.5 py-1 rounded-lg transition"><i class="fas fa-magic mr-1"></i>Auto-corregir</button>` : ''}
                    </div>`;
             }
-            
+
             card.innerHTML = `
                 ${mapSection}
                 <div class="p-4 space-y-2">
@@ -2803,7 +3001,7 @@ window.loadUbicaciones = async () => {
                 </div>`;
             container.appendChild(card);
         });
-    } catch(e) { console.error(e); container.innerHTML = `<div class="col-span-full text-center py-8 text-red-400">Error: ${e.message}</div>`; }
+    } catch (e) { console.error(e); container.innerHTML = `<div class="col-span-full text-center py-8 text-red-400">Error: ${e.message}</div>`; }
 };
 
 
@@ -2841,7 +3039,7 @@ window.loadNosotros = async () => {
         const snap = await getDoc(doc(db, 'config', 'nosotros'));
         if (!snap.exists()) return;
         const d = snap.data();
-        
+
         // Support both new images[] and legacy imageUrl
         nosotrosImages = d.images && d.images.length > 0 ? [...d.images] : (d.imageUrl ? [d.imageUrl] : []);
         console.log('[NOSOTROS] Imágenes cargadas:', nosotrosImages);
@@ -2851,7 +3049,7 @@ window.loadNosotros = async () => {
         document.getElementById('nosotrosTitulo2').value = d.titulo2 || 'Nuestra Empresa';
         document.getElementById('nosotrosColor2').value = d.color2 || '#1d4ed8';
         document.getElementById('nosotrosFondoCuadricula').checked = d.fondoCuadricula !== undefined ? d.fondoCuadricula : false;
-        
+
         document.getElementById('nosotrosLema').value = d.lema || '';
         document.getElementById('nosotrosDescripcion').value = d.descripcion || '';
         document.getElementById('nosotrosColorHistoria').value = d.colorHistoria || '#ffffff';
@@ -2877,8 +3075,14 @@ window.loadNosotros = async () => {
         document.getElementById('nosotrosCompromisoTexto').value = d.compromisoTexto || '';
         document.getElementById('nosotrosCompromisoTags').value = (d.compromisoTags || []).join(', ');
 
+        // Textos Adicionales
+        document.getElementById('nosotrosHeroOverlayTitulo').value = d.heroOverlayTitulo || '';
+        document.getElementById('nosotrosHeroOverlayTexto').value = d.heroOverlayTexto || '';
+        document.getElementById('nosotrosCtaTitulo').value = d.ctaTitulo || '';
+        document.getElementById('nosotrosCtaTexto').value = d.ctaTexto || '';
+
         window.updateNosotrosPreview();
-    } catch(e) { console.error(e); }
+    } catch (e) { console.error(e); }
 };
 
 window.handleNosotrosImageSuccess = (url) => {
@@ -2932,13 +3136,17 @@ window.saveNosotros = async () => {
         compromisoTitulo: document.getElementById('nosotrosCompromisoTitulo').value.trim(),
         compromisoTexto: document.getElementById('nosotrosCompromisoTexto').value.trim(),
         compromisoTags,
+        heroOverlayTitulo: document.getElementById('nosotrosHeroOverlayTitulo').value.trim(),
+        heroOverlayTexto: document.getElementById('nosotrosHeroOverlayTexto').value.trim(),
+        ctaTitulo: document.getElementById('nosotrosCtaTitulo').value.trim(),
+        ctaTexto: document.getElementById('nosotrosCtaTexto').value.trim(),
         valoresTitleFont: document.getElementById('nosotrosValoresTitleFont')?.value || 'font-sans',
         updatedAt: new Date().toISOString()
     };
     try {
         await setDoc(doc(db, 'config', 'nosotros'), data);
         showToast('Información guardada ✓', 'success');
-    } catch(e) { console.error(e); showToast('Error guardando: ' + e.message, 'error'); }
+    } catch (e) { console.error(e); showToast('Error guardando: ' + e.message, 'error'); }
 };
 
 let _valorCounter = 0;
@@ -3202,7 +3410,7 @@ window.deleteBrand = async (id) => {
     window.loadBrands();
 };
 
-window.loadBrands = async function() {
+window.loadBrands = async function () {
     const container = document.getElementById('brandsContainer');
     const empty = document.getElementById('brandsEmpty');
     if (!container) return;
@@ -3236,7 +3444,7 @@ window.loadBrands = async function() {
 
 // Patch switchTab to lazy-load brands, ubicaciones, nosotros
 const _origSwitchTab2 = window.switchTab;
-window.switchTab = function(tab) {
+window.switchTab = function (tab) {
     if (_origSwitchTab2) _origSwitchTab2(tab);
     if (tab === 'marcas') window.loadBrands();
     if (tab === 'ubicaciones') window.loadUbicaciones();
