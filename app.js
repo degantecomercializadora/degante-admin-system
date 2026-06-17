@@ -598,6 +598,11 @@ window.openProductModal = (id = null, data = null) => {
         document.getElementById('productLargo').value = data.largo || '';
         document.getElementById('productAncho').value = data.ancho || '';
         document.getElementById('productAlto').value = data.alto || '';
+        
+        document.getElementById('productPesoCaja').value = data.pesoCaja || '';
+        document.getElementById('productLargoCaja').value = data.largoCaja || '';
+        document.getElementById('productAnchoCaja').value = data.anchoCaja || '';
+        document.getElementById('productAltoCaja').value = data.altoCaja || '';
 
         if (data.imageUrl) {
             const prev = document.getElementById('imgPreview');
@@ -714,11 +719,27 @@ window.saveProduct = async () => {
             largo: parseFloat(document.getElementById('productLargo').value) || 0,
             ancho: parseFloat(document.getElementById('productAncho').value) || 0,
             alto: parseFloat(document.getElementById('productAlto').value) || 0,
+            pesoCaja: parseFloat(document.getElementById('productPesoCaja').value) || 0,
+            largoCaja: parseFloat(document.getElementById('productLargoCaja').value) || 0,
+            anchoCaja: parseFloat(document.getElementById('productAnchoCaja').value) || 0,
+            altoCaja: parseFloat(document.getElementById('productAltoCaja').value) || 0,
             updatedAt: new Date().toISOString()
         };
 
         if (!productData.name || !productData.category || productData.precioIndividual === 0) {
             showToast('Completa nombre, categoría y precio individual', 'error'); return;
+        }
+
+        if (!productData.precioCaja || productData.precioCaja <= 0) {
+            showToast('⚠️ Precio de caja es obligatorio para el cálculo de envíos', 'error'); return;
+        }
+
+        if (!productData.peso || !productData.largo || !productData.ancho || !productData.alto) {
+            showToast('⚠️ Completa las dimensiones individuales: Peso (kg), Largo, Ancho y Alto (cm)', 'error'); return;
+        }
+
+        if (!productData.pesoCaja || !productData.largoCaja || !productData.anchoCaja || !productData.altoCaja) {
+            showToast('⚠️ Completa las dimensiones de caja: Peso (kg), Largo, Ancho y Alto (cm)', 'error'); return;
         }
 
         if (editProductId) {
@@ -2085,9 +2106,17 @@ window.loadOrders = async () => {
 
                 let guiaCol = '';
                 if (o.pickupScheduled) {
-                    guiaCol = `<div class="flex flex-col gap-1"><span class="text-[9px] font-black text-green-600"><i class="fas fa-check-circle"></i> Recolección ${o.pickupDate} ${o.pickupTime}</span><a href="${o.labelUrl}" target="_blank" class="text-[10px] font-black text-blue-600 hover:underline">📦 Guía PDF</a></div>`;
+                    const labelsHtml = (o.labels && o.labels.length > 1)
+                        ? o.labels.map((l, i) => `<a href="${l.labelUrl}" target="_blank" class="text-[10px] font-black text-blue-600 hover:underline">📦 Guía ${i+1} PDF</a><span class="text-[9px] text-gray-400">${l.trackingNumber || ''}</span>`).join('')
+                        : `<a href="${o.labelUrl}" target="_blank" class="text-[10px] font-black text-blue-600 hover:underline">📦 Guía PDF</a>`;
+                    guiaCol = `<div class="flex flex-col gap-1"><span class="text-[9px] font-black text-green-600"><i class="fas fa-check-circle"></i> Recolección ${o.pickupDate} ${o.pickupTime}</span>${labelsHtml}</div>`;
                 } else if (o.shipmentId && o.labelUrl) {
-                    guiaCol = `<div class="flex flex-col gap-1.5"><a href="${o.labelUrl}" target="_blank" class="text-[10px] font-black text-blue-600 hover:underline">📦 Guía PDF</a><span class="text-[9px] text-gray-400">${o.trackingNumber || ''}</span><button onclick="schedulePickup('${o.id}')" class="text-[10px] font-black text-white bg-[#f26522] hover:bg-[#d15316] px-2 py-1 rounded-lg"><i class="fas fa-calendar-check mr-1"></i>Recolección</button></div>`;
+                    if (o.labels && o.labels.length > 1) {
+                        const labelsHtml = o.labels.map((l, i) => `<a href="${l.labelUrl}" target="_blank" class="text-[10px] font-black text-blue-600 hover:underline">📦 Paquete ${i+1}</a><span class="text-[9px] text-gray-400">${l.trackingNumber || ''}</span>`).join('');
+                        guiaCol = `<div class="flex flex-col gap-1.5"><span class="text-[9px] font-black text-purple-600">${o.labels.length} guías generadas</span>${labelsHtml}<button onclick="schedulePickup('${o.id}')" class="text-[10px] font-black text-white bg-[#f26522] hover:bg-[#d15316] px-2 py-1 rounded-lg"><i class="fas fa-calendar-check mr-1"></i>Recolección</button></div>`;
+                    } else {
+                        guiaCol = `<div class="flex flex-col gap-1.5"><a href="${o.labelUrl}" target="_blank" class="text-[10px] font-black text-blue-600 hover:underline">📦 Guía PDF</a><span class="text-[9px] text-gray-400">${o.trackingNumber || ''}</span><button onclick="schedulePickup('${o.id}')" class="text-[10px] font-black text-white bg-[#f26522] hover:bg-[#d15316] px-2 py-1 rounded-lg"><i class="fas fa-calendar-check mr-1"></i>Recolección</button></div>`;
+                    }
                 } else if (o.address && o.hasShipping && o.status === 'Pagado') {
                     guiaCol = `<button onclick="createShipment('${o.id}')" class="text-[10px] font-black text-white bg-[#f26522] hover:bg-[#d15316] px-3 py-1.5 rounded-lg transition-colors"><i class="fas fa-truck-fast mr-1"></i>Crear Envío</button>`;
                 } else if (o.address) {
@@ -2288,6 +2317,7 @@ window.createShipment = async (orderId) => {
                 total: order.total,
                 address: order.address || { zip: '06000', street: '', city: '', state: '' },
                 items: order.items || [],
+                parcels: order.parcels || [],
             }),
         });
 
@@ -2304,11 +2334,14 @@ window.createShipment = async (orderId) => {
             trackingUrl: result.trackingUrl || `https://skydropx.com/rastreo/${result.trackingNumber}`,
             carrier: result.carrier,
             shipmentId: result.shipmentId,
+            labels: result.labels || [],
+            totalPackages: result.totalPackages || 1,
             status: 'Enviado',
             shippedAt: new Date().toISOString(),
         });
 
-        showToast('✅ Guía creada exitosamente', 'success');
+        const pkgCount = result.totalPackages || 1;
+        showToast(`✅ Envío creado: ${pkgCount} guía${pkgCount > 1 ? 's' : ''} generada${pkgCount > 1 ? 's' : ''}`, 'success');
         loadOrders();
     } catch (err) {
         console.error('Error creando envío:', err);
@@ -2419,7 +2452,7 @@ window.generateProductSheet = async (id) => {
     docPDF.setFontSize(10);
     docPDF.text('articulos_redituables7', 90, 395);
     docPDF.text('Articulos Redituables', 280, 395);
-    docPDF.text('5516805503', 520, 390, { align: 'right' });
+    docPDF.text('5564984842', 520, 390, { align: 'right' });
 
     docPDF.save(`Ficha-${p.name}.pdf`);
 };
